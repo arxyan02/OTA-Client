@@ -2,13 +2,12 @@ name: Publish Artifacts
 
 on:
   pull_request:
-    types: [closed]
     branches:
-      - 'release*'
+      - main
 
 jobs:
   publish:
-    if: github.event.pull_request.merged == true
+    if: startsWith(github.head_ref, 'release-*')
     runs-on: ubuntu-latest
 
     permissions:
@@ -43,8 +42,8 @@ jobs:
           servers: |
             [{
               "id": "github",
-              "username": "${env.GITHUB_ACTOR}",
-              "password": "${env.GITHUB_TOKEN}"
+              "username": "${{ env.GITHUB_ACTOR }}",
+              "password": "${{ env.GITHUB_TOKEN }}"
             }]
 
       - name: Get version from POM
@@ -90,7 +89,7 @@ jobs:
         run: |
           echo "## 📦 Multi-Module Publish Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Branch:** ${{ github.event.pull_request.head.ref }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.head_ref }}" >> $GITHUB_STEP_SUMMARY
           echo "**PR:** #${{ github.event.pull_request.number }} - ${{ github.event.pull_request.title }}" >> $GITHUB_STEP_SUMMARY
           echo "**Status:** ${{ needs.publish.result }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
