@@ -1,0 +1,102 @@
+name: Publish Artifacts
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - 'release*'
+
+jobs:
+  publish:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      matrix:
+        module: [
+          'campaign-management',
+          'firmware-management',
+          'update-management',
+          'vehicle-management'
+        ]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Configure Maven settings
+        uses: s4u/maven-settings-action@v3.0.0
+        with:
+          servers: |
+            [{
+              "id": "github",
+              "username": "${env.GITHUB_ACTOR}",
+              "password": "${env.GITHUB_TOKEN}"
+            }]
+
+      - name: Get version from POM
+        id: version
+        working-directory: ${{ matrix.module }}
+        run: |
+          VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Detected version: $VERSION"
+
+      - name: Echo module version
+        run: echo "Publishing version ${{ steps.version.outputs.version }} for module ${{ matrix.module }}"
+
+      - name: Compile and test module
+        working-directory: ${{ matrix.module }}
+        run: |
+          mvn clean compile test
+
+      - name: Deploy module to GitHub Packages
+        working-directory: ${{ matrix.module }}
+        run: |
+          mvn deploy
+        env:
+          GITHUB_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ matrix.module }}-build-logs
+          path: |
+            ${{ matrix.module }}/target/
+            ${{ matrix.module }}/target/surefire-reports/
+          retention-days: 5
+
+  publish-summary:
+    needs: publish
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Publish Summary
+        run: |
+          echo "## 📦 Multi-Module Publish Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.event.pull_request.head.ref }}" >> $GITHUB_STEP_SUMMARY
+          echo "**PR:** #${{ github.event.pull_request.number }} - ${{ github.event.pull_request.title }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ needs.publish.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.publish.result }}" == "success" ]; then
+            echo "✅ All modules published successfully to GitHub Packages" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Some modules failed to publish. Check the job logs for details." >> $GITHUB_STEP_SUMMARY
+          fi
