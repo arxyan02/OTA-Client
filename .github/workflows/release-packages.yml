@@ -2,12 +2,15 @@ name: Publish Artifacts
 
 on:
   pull_request:
-    branches:
-      - main
+    branches: [ main ]
+
+permissions:
+  contents: read
 
 jobs:
   publish:
-    if: startsWith(github.head_ref, 'release-*')
+    if: startsWith(github.head_ref, 'release-')
+    name: Publish (${{ matrix.module }})
     runs-on: ubuntu-latest
 
     permissions:
@@ -15,6 +18,7 @@ jobs:
       packages: write
 
     strategy:
+      fail-fast: false
       matrix:
         module: [
           'campaign-management',
@@ -42,60 +46,79 @@ jobs:
           servers: |
             [{
               "id": "github",
-              "username": "${{ env.GITHUB_ACTOR }}",
-              "password": "${{ env.GITHUB_TOKEN }}"
+              "username": "${{ github.actor }}",
+              "password": "${{ secrets.GITHUB_TOKEN }}"
             }]
 
       - name: Get version from POM
         id: version
         working-directory: ${{ matrix.module }}
         run: |
-          VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          VERSION=$(mvn -q -DforceStdout help:evaluate -Dexpression=project.version)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Detected version: $VERSION"
 
       - name: Echo module version
         run: echo "Publishing version ${{ steps.version.outputs.version }} for module ${{ matrix.module }}"
 
-      - name: Compile and test module
+      - name: Build & test module
         working-directory: ${{ matrix.module }}
         run: |
-          mvn clean compile test
+          mvn -B -ntp clean verify
 
       - name: Deploy module to GitHub Packages
+        if: github.event.pull_request.head.repo.full_name == github.repository
         working-directory: ${{ matrix.module }}
-        run: |
-          mvn deploy
         env:
-          GITHUB_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mvn -B -ntp deploy
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: ${{ matrix.module }}-build-logs
+          name: ${{ matrix.module }}-build
           path: |
             ${{ matrix.module }}/target/
             ${{ matrix.module }}/target/surefire-reports/
           retention-days: 5
 
-  publish-summary:
+  # Single aggregate result for branch protection
+  publish-aggregate:
+    name: Publish (overall)
     needs: publish
     if: always()
     runs-on: ubuntu-latest
+    steps:
+      - name: Aggregate matrix result
+        run: |
+          result="${{ needs.publish.result }}"
+          echo "publish matrix result: $result"
+          if [ "$result" = "success" ] || [ "$result" = "skipped" ]; then
+            exit 0
+          else
+            exit 1
+          fi
 
+  publish-summary:
+    name: Publish Summary
+    needs: publish
+    if: always()
+    runs-on: ubuntu-latest
     steps:
       - name: Publish Summary
         run: |
-          echo "## 📦 Multi-Module Publish Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Branch:** ${{ github.head_ref }}" >> $GITHUB_STEP_SUMMARY
-          echo "**PR:** #${{ github.event.pull_request.number }} - ${{ github.event.pull_request.title }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Status:** ${{ needs.publish.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
-          if [ "${{ needs.publish.result }}" == "success" ]; then
-            echo "✅ All modules published successfully to GitHub Packages" >> $GITHUB_STEP_SUMMARY
+          echo "## 📦 Multi-Module Publish Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Branch:** ${{ github.head_ref }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**PR:** #${{ github.event.pull_request.number }} - ${{ github.event.pull_request.title }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Matrix Status:** ${{ needs.publish.result }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ needs.publish.result }}" = "success" ]; then
+            echo "✅ All modules built/tests passed. (Deploy ran for internal PRs only)" >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${{ needs.publish.result }}" = "skipped" ]; then
+            echo "ℹ️ No modules were executed." >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "❌ Some modules failed to publish. Check the job logs for details." >> $GITHUB_STEP_SUMMARY
+            echo "❌ One or more modules failed. Check job logs for details." >> "$GITHUB_STEP_SUMMARY"
           fi
