@@ -1,19 +1,20 @@
-# ansible/deploy-services.yml
 ---
 - name: Deploy Spring Boot Services to EKS
   hosts: eks
   gather_facts: false
   vars:
-    namespace: "{{ project_name }}-{{ environment }}"
+    app_namespace: "{{ project_name }}-{{ environment }}"
 
   tasks:
     - name: Update kubeconfig for EKS cluster
-      shell: aws eks --region {{ aws_region }} update-kubeconfig --name {{ cluster_name }}
+      ansible.builtin.command: >
+        aws eks --region {{ aws_region }} update-kubeconfig --name {{ cluster_name }}
       delegate_to: localhost
+      changed_when: false
 
     - name: Create namespace
       kubernetes.core.k8s:
-        name: "{{ namespace }}"
+        name: "{{ app_namespace }}"
         api_version: v1
         kind: Namespace
         state: present
@@ -25,7 +26,7 @@
           kind: ConfigMap
           metadata:
             name: app-config
-            namespace: "{{ namespace }}"
+            namespace: "{{ app_namespace }}"
           data:
             application.yml: |
               server:
@@ -55,7 +56,7 @@
           kind: Secret
           metadata:
             name: db-secret
-            namespace: "{{ namespace }}"
+            namespace: "{{ app_namespace }}"
           type: Opaque
           data:
             password: "{{ database_password | b64encode }}"
@@ -70,7 +71,7 @@
           kind: Deployment
           metadata:
             name: "{{ item.name }}"
-            namespace: "{{ namespace }}"
+            namespace: "{{ app_namespace }}"
             labels:
               app: "{{ item.name }}"
               version: "{{ service_version | default('latest') }}"
@@ -86,7 +87,9 @@
               spec:
                 containers:
                   - name: "{{ item.name }}"
-                    image: "{{ ecr_repositories[item.name] | default(aws_account_id + '.dkr.ecr.' + aws_region + '.amazonaws.com/' + project_name + '-' + item.name + ':latest') }}"
+                    image: >-
+                      {{ ecr_repositories[item.name] | default(aws_account_id + '.dkr.ecr.' +
+                      aws_region + '.amazonaws.com/' + project_name + '-' + item.name + ':latest') }}
                     ports:
                       - containerPort: 8080
                     env:
@@ -142,7 +145,7 @@
           kind: Service
           metadata:
             name: "{{ item.name }}-service"
-            namespace: "{{ namespace }}"
+            namespace: "{{ app_namespace }}"
             labels:
               app: "{{ item.name }}"
           spec:
@@ -164,7 +167,7 @@
           kind: Ingress
           metadata:
             name: "{{ project_name }}-ingress"
-            namespace: "{{ namespace }}"
+            namespace: "{{ app_namespace }}"
             annotations:
               kubernetes.io/ingress.class: alb
               alb.ingress.kubernetes.io/scheme: internet-facing
@@ -213,7 +216,7 @@
         api_version: apps/v1
         kind: Deployment
         name: "{{ item.name }}"
-        namespace: "{{ namespace }}"
+        namespace: "{{ app_namespace }}"
         wait: true
         wait_condition:
           type: Available
