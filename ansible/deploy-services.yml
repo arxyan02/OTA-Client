@@ -1,0 +1,222 @@
+# ansible/deploy-services.yml
+---
+- name: Deploy Spring Boot Services to EKS
+  hosts: eks
+  gather_facts: false
+  vars:
+    namespace: "{{ project_name }}-{{ environment }}"
+
+  tasks:
+    - name: Update kubeconfig for EKS cluster
+      shell: aws eks --region {{ aws_region }} update-kubeconfig --name {{ cluster_name }}
+      delegate_to: localhost
+
+    - name: Create namespace
+      kubernetes.core.k8s:
+        name: "{{ namespace }}"
+        api_version: v1
+        kind: Namespace
+        state: present
+
+    - name: Create ConfigMap for application properties
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: app-config
+            namespace: "{{ namespace }}"
+          data:
+            application.yml: |
+              server:
+                port: 8080
+              spring:
+                datasource:
+                  url: jdbc:postgresql://{{ database.host }}:{{ database.port }}/{{ database.name }}
+                  username: {{ database.username }}
+                jpa:
+                  hibernate:
+                    ddl-auto: update
+                  show-sql: false
+              management:
+                endpoints:
+                  web:
+                    exposure:
+                      include: health,info,prometheus
+                endpoint:
+                  health:
+                    show-details: always
+        state: present
+
+    - name: Create Secret for database password
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: db-secret
+            namespace: "{{ namespace }}"
+          type: Opaque
+          data:
+            password: "{{ database_password | b64encode }}"
+        state: present
+      vars:
+        database_password: "{{ db_password | default('changeme') }}"
+
+    - name: Deploy Spring Boot services
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: "{{ item.name }}"
+            namespace: "{{ namespace }}"
+            labels:
+              app: "{{ item.name }}"
+              version: "{{ service_version | default('latest') }}"
+          spec:
+            replicas: "{{ item.replicas }}"
+            selector:
+              matchLabels:
+                app: "{{ item.name }}"
+            template:
+              metadata:
+                labels:
+                  app: "{{ item.name }}"
+              spec:
+                containers:
+                  - name: "{{ item.name }}"
+                    image: "{{ ecr_repositories[item.name] | default(aws_account_id + '.dkr.ecr.' + aws_region + '.amazonaws.com/' + project_name + '-' + item.name + ':latest') }}"
+                    ports:
+                      - containerPort: 8080
+                    env:
+                      - name: SERVER_PORT
+                        value: "8080"
+                      - name: SPRING_DATASOURCE_URL
+                        value: "jdbc:postgresql://{{ database.host }}:{{ database.port }}/{{ database.name }}"
+                      - name: SPRING_DATASOURCE_USERNAME
+                        value: "{{ database.username }}"
+                      - name: SPRING_DATASOURCE_PASSWORD
+                        valueFrom:
+                          secretKeyRef:
+                            name: db-secret
+                            key: password
+                      - name: SPRING_PROFILES_ACTIVE
+                        value: "{{ environment }}"
+                    volumeMounts:
+                      - name: config-volume
+                        mountPath: /app/config
+                        readOnly: true
+                    resources:
+                      requests:
+                        memory: "{{ item.resources.requests.memory }}"
+                        cpu: "{{ item.resources.requests.cpu }}"
+                      limits:
+                        memory: "{{ item.resources.limits.memory }}"
+                        cpu: "{{ item.resources.limits.cpu }}"
+                    livenessProbe:
+                      httpGet:
+                        path: "{{ item.health_check_path }}"
+                        port: 8080
+                      initialDelaySeconds: 60
+                      periodSeconds: 30
+                      timeoutSeconds: 10
+                    readinessProbe:
+                      httpGet:
+                        path: "{{ item.health_check_path }}"
+                        port: 8080
+                      initialDelaySeconds: 30
+                      periodSeconds: 10
+                      timeoutSeconds: 5
+                volumes:
+                  - name: config-volume
+                    configMap:
+                      name: app-config
+        state: present
+      loop: "{{ services }}"
+
+    - name: Create Services
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: "{{ item.name }}-service"
+            namespace: "{{ namespace }}"
+            labels:
+              app: "{{ item.name }}"
+          spec:
+            type: ClusterIP
+            ports:
+              - port: 80
+                targetPort: 8080
+                protocol: TCP
+                name: http
+            selector:
+              app: "{{ item.name }}"
+        state: present
+      loop: "{{ services }}"
+
+    - name: Create Ingress (ALB)
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: "{{ project_name }}-ingress"
+            namespace: "{{ namespace }}"
+            annotations:
+              kubernetes.io/ingress.class: alb
+              alb.ingress.kubernetes.io/scheme: internet-facing
+              alb.ingress.kubernetes.io/target-type: ip
+              alb.ingress.kubernetes.io/healthcheck-path: /actuator/health
+              alb.ingress.kubernetes.io/healthcheck-interval-seconds: '30'
+              alb.ingress.kubernetes.io/healthcheck-timeout-seconds: '5'
+              alb.ingress.kubernetes.io/healthy-threshold-count: '2'
+              alb.ingress.kubernetes.io/unhealthy-threshold-count: '3'
+          spec:
+            rules:
+              - http:
+                  paths:
+                    - path: /campaign
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: campaign-management-service
+                          port:
+                            number: 80
+                    - path: /firmware
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: firmware-management-service
+                          port:
+                            number: 80
+                    - path: /update
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: update-management-service
+                          port:
+                            number: 80
+                    - path: /vehicle
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: vehicle-management-service
+                          port:
+                            number: 80
+        state: present
+
+    - name: Wait for deployments to be ready
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        name: "{{ item.name }}"
+        namespace: "{{ namespace }}"
+        wait: true
+        wait_condition:
+          type: Available
+          status: "True"
+        wait_timeout: 600
+      loop: "{{ services }}"
