@@ -1,0 +1,85 @@
+---
+- name: Setup EKS Cluster with AWS Load Balancer Controller
+  hosts: eks
+  gather_facts: false
+  vars:
+    app_namespace: "{{ project_name }}-{{ environment }}"
+
+  tasks:
+    - name: Update kubeconfig for EKS cluster
+      ansible.builtin.command: >
+        aws eks --region {{ aws_region }} update-kubeconfig --name {{ cluster_name }}
+      delegate_to: localhost
+      changed_when: false
+
+    - name: Check if AWS Load Balancer Controller is already installed
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        name: aws-load-balancer-controller
+        namespace: kube-system
+      register: alb_controller_check
+
+    - name: Install AWS Load Balancer Controller if not present
+      when: alb_controller_check.resources | length == 0
+      block:
+        - name: Download IAM policy for AWS Load Balancer Controller
+          ansible.builtin.uri:
+            url: https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.6.0/docs/install/iam_policy.json
+            dest: /tmp/iam_policy.json
+
+        - name: Create IAM policy for AWS Load Balancer Controller
+          ansible.builtin.command: >
+            aws iam create-policy
+            --policy-name AWSLoadBalancerControllerIAMPolicy
+            --policy-document file:///tmp/iam_policy.json
+          changed_when: false
+          failed_when: false
+
+        - name: Create service account for AWS Load Balancer Controller
+          ansible.builtin.command: >
+            eksctl create iamserviceaccount
+            --cluster={{ cluster_name }}
+            --namespace=kube-system
+            --name=aws-load-balancer-controller
+            --role-name "AmazonEKSLoadBalancerControllerRole"
+            --attach-policy-arn=arn:aws:iam::{{ ansible_aws_account_id | default(aws_account_id) }}:policy/AWSLoadBalancerControllerIAMPolicy
+            --approve
+            --region={{ aws_region }}
+          changed_when: false
+          failed_when: false
+
+        - name: Add EKS Helm repository
+          kubernetes.core.helm_repository:
+            name: eks
+            repo_url: https://aws.github.io/eks-charts
+
+        - name: Install AWS Load Balancer Controller
+          kubernetes.core.helm:
+            name: aws-load-balancer-controller
+            chart_ref: eks/aws-load-balancer-controller
+            release_namespace: kube-system
+            values:
+              clusterName: "{{ cluster_name }}"
+              serviceAccount:
+                create: false
+                name: aws-load-balancer-controller
+
+    - name: Wait for AWS Load Balancer Controller to be ready
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        name: aws-load-balancer-controller
+        namespace: kube-system
+        wait: true
+        wait_condition:
+          type: Available
+          status: "True"
+        wait_timeout: 300
+
+    - name: Create application namespace
+      kubernetes.core.k8s:
+        name: "{{ app_namespace }}"
+        api_version: v1
+        kind: Namespace
+        state: present

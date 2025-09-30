@@ -1,0 +1,73 @@
+# ansible/inventory/all.yml
+all:
+  children:
+    eks:
+      hosts:
+        localhost:
+          ansible_connection: local
+          ansible_python_interpreter: "{{ ansible_playbook_python }}"
+      vars:
+        aws_region: us-west-2
+        cluster_name: valtech-ota-cluster
+        project_name: valtech-ota
+        environment: dev
+
+        # Service configuration
+        services:
+          - name: campaign-management
+            port: 8080
+            replicas: 2
+            resources:
+              requests:
+                memory: "512Mi"
+                cpu: "250m"
+              limits:
+                memory: "1Gi"
+                cpu: "500m"
+            health_check_path: /actuator/health
+
+          - name: firmware-management
+            port: 8081
+            replicas: 2
+            resources:
+              requests:
+                memory: "512Mi"
+                cpu: "250m"
+              limits:
+                memory: "1Gi"
+                cpu: "500m"
+            health_check_path: /actuator/health
+
+          - name: update-management
+            port: 8082
+            replicas: 2
+            resources:
+              requests:
+                memory: "512Mi"
+                cpu: "250m"
+              limits:
+                memory: "1Gi"
+                cpu: "500m"
+            health_check_path: /actuator/health
+
+          - name: vehicle-management
+            port: 8083
+            replicas: 2
+            resources:
+              requests:
+                memory: "512Mi"
+                cpu: "250m"
+              limits:
+                memory: "1Gi"
+                cpu: "500m"
+            health_check_path: /actuator/health
+
+        # Database configuration
+        database:
+          host: "{{ rds_endpoint | default('localhost') }}"
+          port: 5432
+          name: valtech_ota
+          username: postgres
+
+        # ECR configuration
+        ecr_repositories: {}  # Will be populated from Terraform output
