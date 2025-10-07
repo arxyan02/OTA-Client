@@ -182,7 +182,7 @@ resource "aws_db_subnet_group" "main" {
   }
 }
 
-# RDS Instance (optional)
+# RDS Instance
 resource "aws_db_instance" "main" {
   count = var.create_rds ? 1 : 0
 
@@ -218,7 +218,7 @@ resource "aws_db_instance" "main" {
 resource "aws_security_group" "rds" {
   count = var.create_rds ? 1 : 0
 
-  name_prefix = "${var.project_name}-rds-"
+  name_prefix = "${var.project_name}-rds"
   vpc_id      = module.vpc.vpc_id
 
   ingress {

@@ -1,7 +1,7 @@
 variable "aws_region" {
   description = "AWS region"
   type        = string
-  default     = "us-west-2"
+  default     = "ap-south-1"
 }
 
 variable "environment" {
@@ -61,13 +61,13 @@ variable "min_nodes" {
 variable "max_nodes" {
   description = "Maximum number of nodes"
   type        = number
-  default     = 10
+  default     = 4
 }
 
 variable "desired_nodes" {
   description = "Desired number of nodes"
   type        = number
-  default     = 3
+  default     = 2
 }
 
 variable "service_names" {
@@ -91,13 +91,13 @@ variable "create_rds" {
 variable "db_allocated_storage" {
   description = "Initial allocated storage for RDS"
   type        = number
-  default     = 20
+  default     = 5
 }
 
 variable "db_max_allocated_storage" {
   description = "Maximum allocated storage for RDS"
   type        = number
-  default     = 100
+  default     = 10
 }
 
 variable "db_instance_class" {

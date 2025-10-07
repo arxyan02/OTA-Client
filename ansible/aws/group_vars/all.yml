@@ -65,9 +65,10 @@ all:
         # Database configuration
         database:
           host: "{{ rds_endpoint | default('localhost') }}"
-          port: 5432
+          port: "{{ rds_port | default('5432') }}"
           name: valtech_ota
-          username: postgres
+          username: "{{ rds_username }}"
+          password: "{{ rds_password }}"
 
         # ECR configuration
         ecr_repositories: {}  # Will be populated from Terraform output
