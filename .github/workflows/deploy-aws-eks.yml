@@ -114,7 +114,7 @@ jobs:
 
       - name: Install Ansible Collections
         run: |
-          cd ansible
+          cd ansible && cd aws
           ansible-galaxy collection install -r requirements.yml
 
       - name: Ansible Lint
