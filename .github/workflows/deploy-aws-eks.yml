@@ -107,7 +107,10 @@ jobs:
 
       - name: Install Ansible and dependencies
         run: |
-          pip install ansible==${{ env.ANSIBLE_VERSION }} ansible-lint kubernetes boto3 botocore
+          pip install --upgrade pip
+          pip install ansible-core==${{ env.ANSIBLE_VERSION }} ansible-lint kubernetes boto3 botocore
+        env:
+          PIP_NO_CACHE_DIR: 1
 
       - name: Install Ansible Collections
         run: |
