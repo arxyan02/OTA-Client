@@ -56,6 +56,16 @@ output "rds_port" {
   value       = var.create_rds ? aws_db_instance.main[0].port : null
 }
 
+output "rds_username" {
+  description = "RDS instance port"
+  value       = var.create_rds ? aws_db_instance.main[0].username : null
+}
+
+output "rds_password" {
+  description = "RDS instance port"
+  value       = var.create_rds ? aws_db_instance.main[0].password : null
+}
+
 # Output for kubectl configuration
 output "configure_kubectl" {
   description = "Configure kubectl: make sure you're logged in with the correct AWS profile and run the following command to update your kubeconfig"
