@@ -239,15 +239,21 @@ jobs:
         id: tf-plan
         run: |
           cd terraform
-          export exitcode=0
-          terraform plan -detailed-exitcode -no-color -out=tfplan | tee tfplan.txt || export exitcode=$?
+          set +e
+          terraform plan -detailed-exitcode -no-color -out=tfplan 2>&1 | tee tfplan.txt
+          export exitcode=${PIPESTATUS[0]}
+          set -e
           
           echo "exitcode=$exitcode" >> $GITHUB_OUTPUT
           
           if [ $exitcode -eq 1 ]; then
             echo "Terraform Plan Failed!"
             exit 1
+          elif [ $exitcode -eq 0 ]; then
+            echo "No changes detected"
+            exit 0
           else
+            echo "Changes detected"
             exit 0
           fi
 
