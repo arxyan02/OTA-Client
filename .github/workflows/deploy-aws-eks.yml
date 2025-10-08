@@ -163,8 +163,8 @@ jobs:
           context: ./campaign-management
           push: true
           tags: |
-            ${{ steps.login-ecr.outputs.registry }}/synergy/ota-updates:${{ steps.meta.outputs.tags }}
-            ${{ steps.login-ecr.outputs.registry }}/synergy/ota-updates:latest
+            ${{ steps.login-ecr.outputs.registry }}/synergy/ota-update/campaign-management:${{ steps.meta.outputs.tags }}
+            ${{ steps.login-ecr.outputs.registry }}/synergy/ota-update/campaign-management:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -174,8 +174,8 @@ jobs:
           context: ./firmware-management
           push: true
           tags: |
-            ${{ steps.login-ecr.outputs.registry }}/valtech-ota-firmware-management:${{ steps.meta.outputs.tags }}
-            ${{ steps.login-ecr.outputs.registry }}/valtech-ota-firmware-management:latest
+            ${{ steps.login-ecr.outputs.registry }}/synergy/ota-update/firmware-management:${{ steps.meta.outputs.tags }}
+            ${{ steps.login-ecr.outputs.registry }}/synergy/ota-update/firmware-management:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -185,8 +185,8 @@ jobs:
           context: ./update-management
           push: true
           tags: |
-            ${{ steps.login-ecr.outputs.registry }}/valtech-ota-update-management:${{ steps.meta.outputs.tags }}
-            ${{ steps.login-ecr.outputs.registry }}/valtech-ota-update-management:latest
+            ${{ steps.login-ecr.outputs.registry }}/synergy/ota-update/update-management:${{ steps.meta.outputs.tags }}
+            ${{ steps.login-ecr.outputs.registry }}/synergy/ota-update/update-management:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -196,8 +196,8 @@ jobs:
           context: ./vehicle-management
           push: true
           tags: |
-            ${{ steps.login-ecr.outputs.registry }}/valtech-ota-vehicle-management:${{ steps.meta.outputs.tags }}
-            ${{ steps.login-ecr.outputs.registry }}/valtech-ota-vehicle-management:latest
+            ${{ steps.login-ecr.outputs.registry }}/synergy/ota-update/vehicle-management:${{ steps.meta.outputs.tags }}
+            ${{ steps.login-ecr.outputs.registry }}/synergy/ota-update/vehicle-management:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
