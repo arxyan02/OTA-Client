@@ -171,8 +171,8 @@ resource "aws_iam_role" "eks_admin" {
 }
 
 resource "aws_iam_role_policy" "eks_admin_policy" {
-  name   = "${var.project_name}-eks-admin-policy"
-  role   = aws_iam_role.eks_admin.name
+  name = "${var.project_name}-eks-admin-policy"
+  role = aws_iam_role.eks_admin.name
 
   policy = jsonencode({
     Version = "2012-10-17"
