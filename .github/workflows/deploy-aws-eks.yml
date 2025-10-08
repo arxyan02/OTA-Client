@@ -163,8 +163,8 @@ jobs:
           context: ./campaign-management
           push: true
           tags: |
-            ${{ steps.login-ecr.outputs.registry }}/valtech-ota-campaign-management:${{ steps.meta.outputs.tags }}
-            ${{ steps.login-ecr.outputs.registry }}/valtech-ota-campaign-management:latest
+            ${{ steps.login-ecr.outputs.registry }}/synergy/ota-updates:${{ steps.meta.outputs.tags }}
+            ${{ steps.login-ecr.outputs.registry }}/synergy/ota-updates:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
