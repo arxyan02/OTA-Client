@@ -239,8 +239,9 @@ jobs:
         id: tf-plan
         run: |
           cd terraform
-          export exitcode=0
-          terraform plan -detailed-exitcode -no-color -out=tfplan || export exitcode=$?
+          terraform plan -detailed-exitcode -no-color -out=tfplan \
+            -var="db_password=${{ needs.terraform-apply.outputs.rds_password }}" \
+            || export exitcode=$?
           
           echo "exitcode=$exitcode" >> $GITHUB_OUTPUT
           
