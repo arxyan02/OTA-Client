@@ -170,6 +170,25 @@ resource "aws_iam_role" "eks_admin" {
   })
 }
 
+resource "aws_iam_role_policy" "eks_admin_policy" {
+  name   = "${var.project_name}-eks-admin-policy"
+  role   = aws_iam_role.eks_admin.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "eks:DescribeCluster",
+          "eks:ListClusters"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 # RDS Subnet Group
 resource "aws_db_subnet_group" "main" {
   count = var.create_rds ? 1 : 0
