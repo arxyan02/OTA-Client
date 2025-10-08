@@ -79,6 +79,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.target_branch || github.ref }}
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -114,7 +116,7 @@ jobs:
 
       - name: Install Ansible Collections
         run: |
-          cd ansible && cd aws
+          cd ansible/aws
           ansible-galaxy collection install -r requirements.yml
 
       - name: Ansible Lint
@@ -130,12 +132,15 @@ jobs:
     name: Build and Push Docker Images
     runs-on: ubuntu-latest
     needs: validate
-    if: github.event_name != 'pull_request'
+    # Run for workflow_dispatch OR for PR events (but not for PR to main)
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request'
     outputs:
       image-tag: ${{ steps.meta.outputs.tags }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.target_branch || github.ref }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -210,6 +215,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.target_branch || github.ref }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -232,9 +239,8 @@ jobs:
         id: tf-plan
         run: |
           cd terraform
-          terraform plan -detailed-exitcode -no-color -out=tfplan \
-            -var="db_password=${{ needs.terraform-apply.outputs.rds_password }}" \
-            || export exitcode=$?
+          export exitcode=0
+          terraform plan -detailed-exitcode -no-color -out=tfplan || export exitcode=$?
           
           echo "exitcode=$exitcode" >> $GITHUB_OUTPUT
           
@@ -282,12 +288,16 @@ jobs:
     name: Terraform Apply
     runs-on: ubuntu-latest
     needs: [ terraform-plan, build-and-push ]
-    if: github.ref == 'refs/heads/main' && needs.terraform-plan.outputs.tfplanExitCode == 2
+    if: |
+      needs.terraform-plan.outputs.tfplanExitCode == '2' && 
+      (github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main')
     environment:
       name: ${{ github.event.inputs.environment || 'dev' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.target_branch || github.ref }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -324,6 +334,9 @@ jobs:
           cd terraform
           echo "rds_endpoint=$(terraform output -raw rds_endpoint)" >> $GITHUB_OUTPUT
           echo "cluster_name=$(terraform output -raw cluster_name)" >> $GITHUB_OUTPUT
+          echo "rds_name=$(terraform output -raw rds_name)" >> $GITHUB_OUTPUT
+          echo "rds_username=$(terraform output -raw rds_username)" >> $GITHUB_OUTPUT
+          echo "rds_password=$(terraform output -raw rds_password)" >> $GITHUB_OUTPUT
           terraform output -json > ../ansible/terraform_outputs.json
 
       - name: Upload Terraform Outputs
@@ -335,15 +348,23 @@ jobs:
     outputs:
       rds_endpoint: ${{ steps.tf-outputs.outputs.rds_endpoint }}
       cluster_name: ${{ steps.tf-outputs.outputs.cluster_name }}
+      rds_name: ${{ steps.tf-outputs.outputs.rds_name }}
+      rds_username: ${{ steps.tf-outputs.outputs.rds_username }}
+      rds_password: ${{ steps.tf-outputs.outputs.rds_password }}
 
   deploy-services:
     name: Deploy Services with Ansible
     runs-on: ubuntu-latest
     needs: terraform-apply
-    if: github.ref == 'refs/heads/main'
+    # Run if terraform-apply was successful AND it's either manual dispatch or main branch
+    if: |
+      needs.terraform-apply.result == 'success' &&
+      (github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main')
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.target_branch || github.ref }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -359,7 +380,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install ansible==${{ env.ANSIBLE_VERSION }} kubernetes boto3 botocore
+          pip install ansible-core==${{ env.ANSIBLE_VERSION }} kubernetes boto3 botocore
           curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
           sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
           curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
@@ -373,7 +394,7 @@ jobs:
 
       - name: Install Ansible Collections
         run: |
-          cd ansible
+          cd ansible/aws
           ansible-galaxy collection install -r requirements.yml
 
       - name: Get AWS Account ID
@@ -383,7 +404,7 @@ jobs:
 
       - name: Setup EKS Cluster
         run: |
-          cd ansible
+          cd ansible/aws
           ansible-playbook -i inventory/hosts.yml setup-cluster.yml \
             -e cluster_name="${{ needs.terraform-apply.outputs.cluster_name }}" \
             -e aws_account_id="${{ steps.aws-account.outputs.account_id }}" \
@@ -391,7 +412,7 @@ jobs:
 
       - name: Deploy Spring Boot Services
         run: |
-          cd ansible
+          cd ansible/aws
           ansible-playbook -i inventory/hosts.yml deploy-services.yml \
             -e cluster_name="${{ needs.terraform-apply.outputs.cluster_name }}" \
             -e rds_endpoint="${{ needs.terraform-apply.outputs.rds_endpoint }}" \
@@ -411,6 +432,7 @@ jobs:
           echo "## Deployment Summary 🚀" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Environment:** ${{ github.event.inputs.environment || 'dev' }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.event.inputs.target_branch || github.ref_name }}" >> $GITHUB_STEP_SUMMARY
           echo "**Cluster:** ${{ needs.terraform-apply.outputs.cluster_name }}" >> $GITHUB_STEP_SUMMARY
           echo "**RDS Endpoint:** ${{ needs.terraform-apply.outputs.rds_endpoint }}" >> $GITHUB_STEP_SUMMARY
           echo "**Image Tag:** ${{ needs.build-and-push.outputs.image-tag }}" >> $GITHUB_STEP_SUMMARY
