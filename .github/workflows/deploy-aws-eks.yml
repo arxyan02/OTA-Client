@@ -256,7 +256,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: tfplan
-          path: terraform/tfplan
+          path: |
+            terraform/tfplan
+            terraform/tfplan.txt
 
       - name: Create Plan Summary for PR
         uses: actions/github-script@v7
@@ -297,8 +299,14 @@ jobs:
           echo "<details><summary>Show Plan</summary>" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo '```terraform' >> $GITHUB_STEP_SUMMARY
-          cat terraform/tfplan.txt || echo "Plan output not available" >> $GITHUB_STEP_SUMMARY
+          if [ -f terraform/tfplan.txt ]; then
+            cat terraform/tfplan.txt >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Plan output not available" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
           echo "</details>" >> $GITHUB_STEP_SUMMARY
 
   terraform-apply:
