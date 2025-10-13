@@ -239,25 +239,17 @@ jobs:
         id: tf-plan
         run: |
           cd terraform
-          set +e
-          terraform plan -detailed-exitcode -no-color -out=tfplan > tfplan.txt 2>&1
-          exitcode=$?
-          set -e
+          terraform plan -detailed-exitcode -no-color -out=tfplan \
+          -var="db_password=" \
+          || export exitcode=$?
           
           echo "exitcode=$exitcode" >> $GITHUB_OUTPUT
           
-          # Display plan output
-          cat tfplan.txt
-          
           if [ $exitcode -eq 1 ]; then
-            echo "Terraform Plan Failed!"
-            exit 1
-          elif [ $exitcode -eq 0 ]; then
-            echo "No changes detected"
-            exit 0
+          echo "Terraform Plan Failed!"
+          exit 1
           else
-            echo "Changes detected"
-            exit 0
+          exit 0
           fi
 
       - name: Upload Terraform Plan
