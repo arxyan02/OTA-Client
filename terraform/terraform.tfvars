@@ -2,7 +2,7 @@ aws_region         = "us-west-2"
 environment        = "dev"
 project_name       = "valtech-ota"
 cluster_name       = "valtech-ota-cluster"
-kubernetes_version = "1.27"
+kubernetes_version = "1.32"
 
 # VPC Configuration
 vpc_cidr        = "10.0.0.0/16"
