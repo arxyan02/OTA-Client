@@ -165,6 +165,7 @@ jobs:
         run: |
           cd terraform
           terraform plan -detailed-exitcode -no-color -out=tfplan \
+          -input=false \
           || export exitcode=$?
           
           echo "exitcode=$exitcode" >> $GITHUB_OUTPUT
