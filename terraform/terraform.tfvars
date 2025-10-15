@@ -1,4 +1,4 @@
-aws_region         = "us-west-2"
+aws_region         = "ap-south-1"
 environment        = "dev"
 project_name       = "valtech-ota"
 cluster_name       = "valtech-ota-cluster"
