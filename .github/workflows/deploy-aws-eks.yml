@@ -162,6 +162,8 @@ jobs:
 
       - name: Terraform Plan
         id: tf-plan
+        env:
+          TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
         run: |
           cd terraform
           terraform plan -detailed-exitcode -no-color -out=tfplan \
