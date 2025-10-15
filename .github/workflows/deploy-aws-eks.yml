@@ -165,7 +165,6 @@ jobs:
         run: |
           cd terraform
           terraform plan -detailed-exitcode -no-color -out=tfplan \
-          -var="db_password=" \
           || export exitcode=$?
           
           echo "exitcode=$exitcode" >> $GITHUB_OUTPUT
