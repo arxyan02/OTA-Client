@@ -102,9 +102,6 @@ jobs:
           cd terraform
           terraform validate
 
-      - name: Terraform Destroy
-        run: terraform destroy -auto-approve
-
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -344,9 +341,23 @@ jobs:
       - uses: aws-actions/amazon-ecr-login@v2
         id: login-ecr
 
+      - name: Check if image version exists
+        id: check-image
+        run: |
+          IMAGE_TAG=${{ needs.set-meta.outputs.image-tag }}
+          ECR_REPO="${{ steps.login-ecr.outputs.registry }}/valtech-ota-campaign-management"
+          EXISTS=$(aws ecr describe-images --repository-name valtech-ota-campaign-management --image-ids imageTag=$IMAGE_TAG 2>/dev/null || echo "")
+          if [ -n "$EXISTS" ]; then
+            echo "push_needed=false" >> $GITHUB_OUTPUT
+          else
+            echo "push_needed=true" >> $GITHUB_OUTPUT
+          fi
+
       - uses: docker/setup-buildx-action@v3
+        if: steps.check-image.outputs.push_needed == 'true'
 
       - uses: docker/build-push-action@v5
+        if: steps.check-image.outputs.push_needed == 'true'
         with:
           context: ./campaign-management
           push: true
@@ -375,11 +386,25 @@ jobs:
       - uses: aws-actions/amazon-ecr-login@v2
         id: login-ecr
 
+      - name: Check if image version exists
+        id: check-image
+        run: |
+          IMAGE_TAG=${{ needs.set-meta.outputs.image-tag }}
+          ECR_REPO="${{ steps.login-ecr.outputs.registry }}/valtech-ota-firmware-management"
+          EXISTS=$(aws ecr describe-images --repository-name valtech-ota-firmware-management --image-ids imageTag=$IMAGE_TAG 2>/dev/null || echo "")
+          if [ -n "$EXISTS" ]; then
+            echo "push_needed=false" >> $GITHUB_OUTPUT
+          else
+            echo "push_needed=true" >> $GITHUB_OUTPUT
+          fi
+
       - uses: docker/setup-buildx-action@v3
+        if: steps.check-image.outputs.push_needed == 'true'
 
       - uses: docker/build-push-action@v5
+        if: steps.check-image.outputs.push_needed == 'true'
         with:
-          context: ./firmware-management
+          context: ./campaign-management
           push: true
           platforms: linux/amd64
           tags: |
@@ -406,11 +431,25 @@ jobs:
       - uses: aws-actions/amazon-ecr-login@v2
         id: login-ecr
 
+      - name: Check if image version exists
+        id: check-image
+        run: |
+          IMAGE_TAG=${{ needs.set-meta.outputs.image-tag }}
+          ECR_REPO="${{ steps.login-ecr.outputs.registry }}/valtech-ota-udpate-management"
+          EXISTS=$(aws ecr describe-images --repository-name valtech-ota-update-management --image-ids imageTag=$IMAGE_TAG 2>/dev/null || echo "")
+          if [ -n "$EXISTS" ]; then
+            echo "push_needed=false" >> $GITHUB_OUTPUT
+          else
+            echo "push_needed=true" >> $GITHUB_OUTPUT
+          fi
+
       - uses: docker/setup-buildx-action@v3
+        if: steps.check-image.outputs.push_needed == 'true'
 
       - uses: docker/build-push-action@v5
+        if: steps.check-image.outputs.push_needed == 'true'
         with:
-          context: ./update-management
+          context: ./campaign-management
           push: true
           platforms: linux/amd64
           tags: |
@@ -437,11 +476,25 @@ jobs:
       - uses: aws-actions/amazon-ecr-login@v2
         id: login-ecr
 
+      - name: Check if image version exists
+        id: check-image
+        run: |
+          IMAGE_TAG=${{ needs.set-meta.outputs.image-tag }}
+          ECR_REPO="${{ steps.login-ecr.outputs.registry }}/valtech-ota-vehicle-management"
+          EXISTS=$(aws ecr describe-images --repository-name valtech-ota-vehicle-management --image-ids imageTag=$IMAGE_TAG 2>/dev/null || echo "")
+          if [ -n "$EXISTS" ]; then
+            echo "push_needed=false" >> $GITHUB_OUTPUT
+          else
+            echo "push_needed=true" >> $GITHUB_OUTPUT
+          fi
+
       - uses: docker/setup-buildx-action@v3
+        if: steps.check-image.outputs.push_needed == 'true'
 
       - uses: docker/build-push-action@v5
+        if: steps.check-image.outputs.push_needed == 'true'
         with:
-          context: ./vehicle-management
+          context: ./campaign-management
           push: true
           platforms: linux/amd64
           tags: |
