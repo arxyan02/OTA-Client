@@ -3,7 +3,9 @@
   hosts: eks
   gather_facts: false
   vars:
-    app_namespace: "{{ project_name }}-{{ environment }}"
+    project_name: valtech-ota
+    app_environment: dev
+    app_namespace: "{{ project_name }}-{{ app_environment }}"
 
   tasks:
     - name: Update kubeconfig for EKS cluster

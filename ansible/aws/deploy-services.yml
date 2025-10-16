@@ -4,8 +4,8 @@
   gather_facts: false
   vars:
     project_name: valtech-ota
-    environment: dev
-    app_namespace: "{{ project_name | default('valtech-ota') }}-{{ environment | default('dev') }}"
+    app_environment: dev
+    app_namespace: "{{ project_name | default('valtech-ota') }}-{{ app_environment | default('dev') }}"
 
   tasks:
     - name: Update kubeconfig for EKS cluster
@@ -107,7 +107,7 @@
                             name: db-secret
                             key: password
                       - name: SPRING_PROFILES_ACTIVE
-                        value: "{{ environment }}"
+                        value: "{{ app_environment }}"
                     volumeMounts:
                       - name: config-volume
                         mountPath: /app/config
