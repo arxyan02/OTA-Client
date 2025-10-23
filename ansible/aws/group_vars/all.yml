@@ -10,7 +10,7 @@ all:
         aws_region: us-west-2
         cluster_name: valtech-ota-cluster
         project_name: valtech-ota
-        environment: dev
+        app_environment: dev
 
         # Service configuration
         services:
