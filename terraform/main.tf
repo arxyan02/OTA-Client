@@ -14,6 +14,13 @@ terraform {
       version = "~> 2.10"
     }
   }
+  backend "s3" {
+    bucket         = "valtech-ota-tfstate-bucket"
+    key            = "envs/dev/terraform.tfstate"
+    region         = "ap-south-1"
+    dynamodb_table = "valtech-ota-terraform-state-locks"
+    encrypt        = true
+  }
 }
 
 provider "aws" {
