@@ -3,11 +3,14 @@ name: Provision AWS infrastructure
 on:
   pull_request:
     branches:
+      - 'deploy-*'
       - 'release-*'
     types:
       - opened
       - synchronize
       - reopened
+    paths:
+      - 'terraform/**'
 
   workflow_dispatch:
     inputs:
