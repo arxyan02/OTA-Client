@@ -1,0 +1,17 @@
+server:
+  service:
+    type: LoadBalancer
+
+controller:
+  metrics:
+    enabled: true
+
+repoServer:
+  metrics:
+    enabled: true
+
+applicationSet:
+  enabled: true
+
+dex:
+  enabled: false
