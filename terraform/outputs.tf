@@ -64,6 +64,7 @@ output "rds_username" {
 output "rds_password" {
   description = "RDS instance port"
   value       = var.create_rds ? aws_db_instance.main[0].password : null
+  sensitive   = true
 }
 
 # Output for kubectl configuration

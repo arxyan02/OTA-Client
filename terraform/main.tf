@@ -14,6 +14,13 @@ terraform {
       version = "~> 2.10"
     }
   }
+  backend "s3" {
+    bucket         = "valtech-ota-tfstate-bucket"
+    key            = "envs/dev/terraform.tfstate"
+    region         = "ap-south-1"
+    dynamodb_table = "valtech-ota-terraform-state-locks"
+    encrypt        = true
+  }
 }
 
 provider "aws" {
@@ -40,7 +47,7 @@ data "aws_caller_identity" "current" {}
 
 # VPC
 module "vpc" {
-  source = "terraform-aws-modules/vpc/aws"
+  source  = "terraform-aws-modules/vpc/aws"
   version = "~> 5.0"
 
   name = "${var.project_name}-vpc"
@@ -50,26 +57,26 @@ module "vpc" {
   private_subnets = var.private_subnets
   public_subnets  = var.public_subnets
 
-  enable_nat_gateway     = true
-  single_nat_gateway     = var.environment == "dev"
-  enable_vpn_gateway     = false
-  enable_dns_hostnames   = true
-  enable_dns_support     = true
+  enable_nat_gateway   = true
+  single_nat_gateway   = var.environment == "dev"
+  enable_vpn_gateway   = false
+  enable_dns_hostnames = true
+  enable_dns_support   = true
 
   public_subnet_tags = {
-    "kubernetes.io/role/elb" = "1"
+    "kubernetes.io/role/elb"                    = "1"
     "kubernetes.io/cluster/${var.cluster_name}" = "owned"
   }
 
   private_subnet_tags = {
-    "kubernetes.io/role/internal-elb" = "1"
+    "kubernetes.io/role/internal-elb"           = "1"
     "kubernetes.io/cluster/${var.cluster_name}" = "owned"
   }
 }
 
 # EKS Cluster
 module "eks" {
-  source = "terraform-aws-modules/eks/aws"
+  source  = "terraform-aws-modules/eks/aws"
   version = "~> 19.15"
 
   cluster_name    = var.cluster_name
@@ -170,6 +177,25 @@ resource "aws_iam_role" "eks_admin" {
   })
 }
 
+resource "aws_iam_role_policy" "eks_admin_policy" {
+  name = "${var.project_name}-eks-admin-policy"
+  role = aws_iam_role.eks_admin.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "eks:DescribeCluster",
+          "eks:ListClusters"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 # RDS Subnet Group
 resource "aws_db_subnet_group" "main" {
   count = var.create_rds ? 1 : 0
@@ -190,10 +216,10 @@ resource "aws_db_instance" "main" {
 
   allocated_storage     = var.db_allocated_storage
   max_allocated_storage = var.db_max_allocated_storage
-  storage_type         = "gp3"
-  engine               = "postgres"
-  engine_version       = "15.4"
-  instance_class       = var.db_instance_class
+  storage_type          = "gp3"
+  engine                = "postgres"
+  engine_version        = "17.4"
+  instance_class        = var.db_instance_class
 
   db_name  = var.db_name
   username = var.db_username
@@ -203,8 +229,8 @@ resource "aws_db_instance" "main" {
   db_subnet_group_name   = aws_db_subnet_group.main[0].name
 
   backup_retention_period = var.environment == "prod" ? 7 : 1
-  backup_window          = "03:00-04:00"
-  maintenance_window     = "Sun:04:00-Sun:05:00"
+  backup_window           = "03:00-04:00"
+  maintenance_window      = "Sun:04:00-Sun:05:00"
 
   skip_final_snapshot       = var.environment != "prod"
   final_snapshot_identifier = var.environment == "prod" ? "${var.project_name}-final-snapshot-${formatdate("YYYY-MM-DD-hhmm", timestamp())}" : null

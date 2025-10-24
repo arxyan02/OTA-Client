@@ -73,7 +73,7 @@ variable "desired_nodes" {
 variable "service_names" {
   description = "List of Spring Boot service names"
   type        = list(string)
-  default     = [
+  default = [
     "campaign-management",
     "firmware-management",
     "update-management",

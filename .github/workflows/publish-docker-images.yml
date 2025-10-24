@@ -1,0 +1,225 @@
+name: Build and publish docker images
+
+on:
+  pull_request:
+    branches:
+      - 'release-*'
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: 'Target branch to deploy from'
+        required: true
+        default: 'main'
+        type: string
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+
+jobs:
+  set-meta:
+    name: Set Image Tag
+    runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.target_branch || github.ref }}
+
+      - name: Get short SHA
+        id: meta
+        run: |
+          echo "tags=sha-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+          echo "date=$(date +'%Y%m%d-%H%M%S')" >> $GITHUB_OUTPUT
+
+  build-campaign:
+    name: Build & Push Campaign Management
+    runs-on: ubuntu-latest
+    needs: [ set-meta ]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.target_branch || github.ref }}
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: login-ecr
+
+      - name: Check if image version exists
+        id: check-image
+        run: |
+          IMAGE_TAG=${{ needs.set-meta.outputs.image-tag }}
+          ECR_REPO="${{ steps.login-ecr.outputs.registry }}/valtech-ota-campaign-management"
+          EXISTS=$(aws ecr describe-images --repository-name valtech-ota-campaign-management --image-ids imageTag=$IMAGE_TAG 2>/dev/null || echo "")
+          if [ -n "$EXISTS" ]; then
+            echo "push_needed=false" >> $GITHUB_OUTPUT
+          else
+            echo "push_needed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: docker/setup-buildx-action@v3
+        if: steps.check-image.outputs.push_needed == 'true'
+
+      - uses: docker/build-push-action@v5
+        if: steps.check-image.outputs.push_needed == 'true'
+        with:
+          context: ./campaign-management
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/valtech-ota-campaign-management:${{ needs.set-meta.outputs.image-tag }}
+            ${{ steps.login-ecr.outputs.registry }}/valtech-ota-campaign-management:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-firmware:
+    name: Build & Push Firmware Management
+    runs-on: ubuntu-latest
+    needs: [ set-meta ]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.target_branch || github.ref }}
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: login-ecr
+
+      - name: Check if image version exists
+        id: check-image
+        run: |
+          IMAGE_TAG=${{ needs.set-meta.outputs.image-tag }}
+          ECR_REPO="${{ steps.login-ecr.outputs.registry }}/valtech-ota-firmware-management"
+          EXISTS=$(aws ecr describe-images --repository-name valtech-ota-firmware-management --image-ids imageTag=$IMAGE_TAG 2>/dev/null || echo "")
+          if [ -n "$EXISTS" ]; then
+            echo "push_needed=false" >> $GITHUB_OUTPUT
+          else
+            echo "push_needed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: docker/setup-buildx-action@v3
+        if: steps.check-image.outputs.push_needed == 'true'
+
+      - uses: docker/build-push-action@v5
+        if: steps.check-image.outputs.push_needed == 'true'
+        with:
+          context: ./campaign-management
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/valtech-ota-firmware-management:${{ needs.set-meta.outputs.image-tag }}
+            ${{ steps.login-ecr.outputs.registry }}/valtech-ota-firmware-management:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-update:
+    name: Build & Push Update Management
+    runs-on: ubuntu-latest
+    needs: [ set-meta ]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.target_branch || github.ref }}
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: login-ecr
+
+      - name: Check if image version exists
+        id: check-image
+        run: |
+          IMAGE_TAG=${{ needs.set-meta.outputs.image-tag }}
+          ECR_REPO="${{ steps.login-ecr.outputs.registry }}/valtech-ota-udpate-management"
+          EXISTS=$(aws ecr describe-images --repository-name valtech-ota-update-management --image-ids imageTag=$IMAGE_TAG 2>/dev/null || echo "")
+          if [ -n "$EXISTS" ]; then
+            echo "push_needed=false" >> $GITHUB_OUTPUT
+          else
+            echo "push_needed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: docker/setup-buildx-action@v3
+        if: steps.check-image.outputs.push_needed == 'true'
+
+      - uses: docker/build-push-action@v5
+        if: steps.check-image.outputs.push_needed == 'true'
+        with:
+          context: ./campaign-management
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/valtech-ota-update-management:${{ needs.set-meta.outputs.image-tag }}
+            ${{ steps.login-ecr.outputs.registry }}/valtech-ota-update-management:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-vehicle:
+    name: Build & Push Vehicle Management
+    runs-on: ubuntu-latest
+    needs: [ set-meta ]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.target_branch || github.ref }}
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: login-ecr
+
+      - name: Check if image version exists
+        id: check-image
+        run: |
+          IMAGE_TAG=${{ needs.set-meta.outputs.image-tag }}
+          ECR_REPO="${{ steps.login-ecr.outputs.registry }}/valtech-ota-vehicle-management"
+          EXISTS=$(aws ecr describe-images --repository-name valtech-ota-vehicle-management --image-ids imageTag=$IMAGE_TAG 2>/dev/null || echo "")
+          if [ -n "$EXISTS" ]; then
+            echo "push_needed=false" >> $GITHUB_OUTPUT
+          else
+            echo "push_needed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: docker/setup-buildx-action@v3
+        if: steps.check-image.outputs.push_needed == 'true'
+
+      - uses: docker/build-push-action@v5
+        if: steps.check-image.outputs.push_needed == 'true'
+        with:
+          context: ./campaign-management
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/valtech-ota-vehicle-management:${{ needs.set-meta.outputs.image-tag }}
+            ${{ steps.login-ecr.outputs.registry }}/valtech-ota-vehicle-management:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
