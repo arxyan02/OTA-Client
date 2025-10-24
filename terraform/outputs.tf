@@ -67,8 +67,42 @@ output "rds_password" {
   sensitive   = true
 }
 
-# Output for kubectl configuration
 output "configure_kubectl" {
   description = "Configure kubectl: make sure you're logged in with the correct AWS profile and run the following command to update your kubeconfig"
   value       = "aws eks --region ${var.aws_region} update-kubeconfig --name ${module.eks.cluster_name}"
+}
+
+output "kubeconfig" {
+  description = "Kubeconfig for the EKS cluster"
+
+  value = yamlencode({
+    apiVersion : "v1"
+    kind : "Config"
+    clusters = [{
+      name = var.cluster_name
+      cluster = {
+        server                       = module.eks.cluster_endpoint
+        "certificate-authority-data" = module.eks.cluster_certificate_authority_data[0]
+      }
+    }]
+    contexts = [{
+      name = module.eks.cluster_name
+      context = {
+        cluster = module.eks.cluster_name
+        user    = module.eks.cluster_name
+      }
+    }]
+    current-context = module.eks.cluster_name
+    users = [{
+      name = module.eks.cluster_name
+      user = {
+        exec = {
+          apiVersion = "client.authentication.k8s.io/v1alpha1"
+          command    = "aws"
+          args       = ["eks", "get-token", "--cluster-name", module.eks.cluster_name]
+        }
+      }
+    }]
+  })
+  sensitive = true
 }

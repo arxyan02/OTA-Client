@@ -105,7 +105,7 @@ jobs:
           set -e
           BUCKET_NAME="valtech-ota-tfstate-bucket"
           echo "Checking if Terraform S3 bucket '$BUCKET_NAME' exists..."
-  
+          
           if aws s3api head-bucket --bucket "$BUCKET_NAME" 2>/dev/null; then
             echo "Bucket '$BUCKET_NAME' already exists."
           else
@@ -271,107 +271,42 @@ jobs:
       rds_username: ${{ steps.tf-outputs.outputs.rds_username }}
       rds_password: ${{ steps.tf-outputs.outputs.rds_password }}
 
-#  deploy-services:
-#    name: Deploy Services with Ansible
-#    runs-on: ubuntu-latest
-#    needs: [ terraform-apply ]
-#    if: |
-#      needs.terraform-apply.result == 'success' &&
-#      (github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main')
-#    steps:
-#      - name: Checkout code
-#        uses: actions/checkout@v4
-#        with:
-#          ref: ${{ github.event.inputs.target_branch || github.ref }}
-#
-#      - name: Configure AWS credentials
-#        uses: aws-actions/configure-aws-credentials@v4
-#        with:
-#          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-#          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-#          aws-region: ${{ env.AWS_REGION }}
-#
-#      - name: Setup Python
-#        uses: actions/setup-python@v5
-#        with:
-#          python-version: ${{ env.PYTHON_VERSION }}
-#
-#      - name: Install dependencies
-#        run: |
-#          pip install ansible-core==${{ env.ANSIBLE_VERSION }} kubernetes boto3 botocore
-#          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-#          sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
-#          curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
-#          sudo mv /tmp/eksctl /usr/local/bin
-#
-#      - name: Download Terraform Outputs
-#        uses: actions/download-artifact@v4
-#        with:
-#          name: terraform-outputs
-#          path: ansible/
-#
-#      - name: Install Ansible Collections
-#        run: |
-#          cd ansible/aws
-#          ansible-galaxy collection install -r requirements.yml
-#
-#      - name: Get AWS Account ID
-#        id: aws-account
-#        run: |
-#          echo "account_id=$(aws sts get-caller-identity --query Account --output text)" >> $GITHUB_OUTPUT
-#
-#      - name: Setup EKS Cluster
-#        run: |
-#          cd ansible/aws
-#          ansible-playbook -i inventory/hosts.yml setup-cluster.yml \
-#            -e cluster_name="${{ needs.terraform-apply.outputs.cluster_name }}" \
-#            -e aws_account_id="${{ steps.aws-account.outputs.account_id }}" \
-#            -e aws_region="${{ env.AWS_REGION }}"
-#
-#      - name: Deploy Spring Boot Services
-#        run: |
-#          cd ansible/aws
-#          ansible-playbook -i inventory/hosts.yml deploy-services.yml \
-#            -e cluster_name="${{ needs.terraform-apply.outputs.cluster_name }}" \
-#            -e rds_endpoint="${{ needs.terraform-apply.outputs.rds_endpoint }}" \
-#            -e db_name="${{ needs.terraform-apply.outputs.rds_name }}" \
-#            -e db_username="${{ needs.terraform-apply.outputs.rds_username }}" \
-#            -e db_password="${{ needs.terraform-apply.outputs.rds_password }}" \
-#            -e aws_region="${{ env.AWS_REGION }}" \
-#            -e service_version="${{ needs.build-and-push.outputs.image-tag }}"
-#
-#      - name: Get Service URLs
-#        run: |
-#          kubectl config use-context $(kubectl config current-context)
-#          kubectl get ingress -n valtech-ota-dev -o wide
-#
-#      - name: Deployment Summary
-#        run: |
-#          echo "## Deployment Summary 🚀" >> $GITHUB_STEP_SUMMARY
-#          echo "" >> $GITHUB_STEP_SUMMARY
-#          echo "**Environment:** ${{ github.event.inputs.environment || 'dev' }}" >> $GITHUB_STEP_SUMMARY
-#          echo "**Branch:** ${{ github.event.inputs.target_branch || github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-#          echo "**Cluster:** ${{ needs.terraform-apply.outputs.cluster_name }}" >> $GITHUB_STEP_SUMMARY
-#          echo "**RDS Endpoint:** ${{ needs.terraform-apply.outputs.rds_endpoint }}" >> $GITHUB_STEP_SUMMARY
-#          echo "**Image Tag:** ${{ needs.build-and-push.outputs.image-tag }}" >> $GITHUB_STEP_SUMMARY
-#          echo "" >> $GITHUB_STEP_SUMMARY
-#          echo "### Services Deployed:" >> $GITHUB_STEP_SUMMARY
-#          echo "- campaign-management" >> $GITHUB_STEP_SUMMARY
-#          echo "- firmware-management" >> $GITHUB_STEP_SUMMARY
-#          echo "- update-management" >> $GITHUB_STEP_SUMMARY
-#          echo "- vehicle-management" >> $GITHUB_STEP_SUMMARY
-#
-#  notify:
-#    name: Send Deployment Notification
-#    runs-on: ubuntu-latest
-#    needs: [ deploy-services ]
-#    if: always()
-#    steps:
-#      - name: Deployment Status
-#        run: |
-#          if [ "${{ needs.deploy-services.result }}" == "success" ]; then
-#            echo "✅ Deployment completed successfully!"
-#          else
-#            echo "❌ Deployment failed!"
-#            exit 1
-#          fi
+  argocd-deploy:
+    name: Deploy ArgoCD
+    runs-on: ubuntu-latest
+    needs: terraform-apply
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.target_branch || github.ref }}
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      #using the azure template to set up kubectl on AWS EKS
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Generate kubeconfig
+        id: kubeconfig
+        run: |
+          aws eks --region ${{ env.AWS_REGION }} update-kubeconfig --name ${{ needs.terraform-apply.outputs.cluster_name }}
+
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'v3.12.3'
+
+      - name: Deploy ArgoCD using Helm
+        run: |
+          helm repo add argo https://argoproj.github.io/argo-helm
+          helm repo update
+          helm upgrade --install argocd argo/argo-cd --namespace argocd --create-namespace -f terraform/argocd-values.yaml
