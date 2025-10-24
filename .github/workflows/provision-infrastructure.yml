@@ -110,8 +110,8 @@ jobs:
             echo "Bucket '$BUCKET_NAME' already exists."
           else
             echo "Bucket not found. Creating via bootstrap Terraform..."
-            terraform -chdir=bootstrap init -input=false
-            terraform -chdir=bootstrap apply -auto-approve
+            terraform -chdir=terraform/bootstrap init -input=false
+            terraform -chdir=terraform/bootstrap apply -auto-approve
           fi
 
       - name: Terraform Init
