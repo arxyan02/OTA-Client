@@ -82,7 +82,7 @@ output "kubeconfig" {
       name = var.cluster_name
       cluster = {
         server                       = module.eks.cluster_endpoint
-        "certificate-authority-data" = module.eks.cluster_certificate_authority_data[0]
+        "certificate-authority-data" = module.eks.cluster_certificate_authority_data
       }
     }]
     contexts = [{
