@@ -188,7 +188,6 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "<details><summary>Show Plan</summary>" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo '```
           if [ -f terraform/tfplan.txt ]; then
             cat terraform/tfplan.txt >> $GITHUB_STEP_SUMMARY
           else
