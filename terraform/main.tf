@@ -72,6 +72,10 @@ module "vpc" {
     "kubernetes.io/role/internal-elb"           = "1"
     "kubernetes.io/cluster/${var.cluster_name}" = "owned"
   }
+
+  tags = {
+    "kubernetes.io/cluster/${var.cluster_name}" = "owned"
+  }
 }
 
 # EKS Cluster
@@ -85,6 +89,22 @@ module "eks" {
   vpc_id                         = module.vpc.vpc_id
   subnet_ids                     = module.vpc.private_subnets
   cluster_endpoint_public_access = true
+
+  # Enable IRSA (IAM Roles for Service Accounts)
+  enable_irsa = true
+
+  # Cluster addons
+  cluster_addons = {
+    coredns = {
+      most_recent = true
+    }
+    kube-proxy = {
+      most_recent = true
+    }
+    vpc-cni = {
+      most_recent = true
+    }
+  }
 
   # EKS Managed Node Groups
   eks_managed_node_groups = {
@@ -107,6 +127,10 @@ module "eks" {
       tags = {
         Environment = var.environment
       }
+
+      update_config = {
+        max_unavailable_percentage = 33
+      }
     }
   }
 
@@ -120,6 +144,10 @@ module "eks" {
       groups   = ["system:masters"]
     },
   ]
+
+  depends_on = [
+    module.vpc
+  ]
 }
 
 # ECR Repositories for Spring Boot services
@@ -131,6 +159,12 @@ resource "aws_ecr_repository" "services" {
 
   image_scanning_configuration {
     scan_on_push = true
+  }
+
+  force_delete = var.environment != "prod"
+
+  tags = {
+    Service = each.key
   }
 }
 
@@ -157,6 +191,8 @@ resource "aws_ecr_lifecycle_policy" "services" {
       }
     ]
   })
+
+  depends_on = [aws_ecr_repository.services]
 }
 
 # IAM Role for EKS Admin
@@ -206,6 +242,8 @@ resource "aws_db_subnet_group" "main" {
   tags = {
     Name = "${var.project_name} DB subnet group"
   }
+
+  depends_on = [module.vpc]
 }
 
 # RDS Instance
@@ -235,23 +273,32 @@ resource "aws_db_instance" "main" {
   skip_final_snapshot       = var.environment != "prod"
   final_snapshot_identifier = var.environment == "prod" ? "${var.project_name}-final-snapshot-${formatdate("YYYY-MM-DD-hhmm", timestamp())}" : null
 
+  deletion_protection = var.environment == "prod"
+
   tags = {
     Name = "${var.project_name} Database"
   }
+
+  depends_on = [
+    aws_db_subnet_group.main,
+    aws_security_group.rds
+  ]
 }
 
 # Security Group for RDS
 resource "aws_security_group" "rds" {
   count = var.create_rds ? 1 : 0
 
-  name_prefix = "${var.project_name}-rds"
+  name_prefix = "${var.project_name}-rds-"
   vpc_id      = module.vpc.vpc_id
+  description = "Security group for RDS instance"
 
   ingress {
     from_port   = 5432
     to_port     = 5432
     protocol    = "tcp"
     cidr_blocks = [var.vpc_cidr]
+    description = "PostgreSQL access from VPC"
   }
 
   egress {
@@ -259,9 +306,16 @@ resource "aws_security_group" "rds" {
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
+    description = "Allow all outbound traffic"
   }
 
   tags = {
     Name = "${var.project_name} RDS Security Group"
+  }
+
+  depends_on = [module.vpc]
+
+  lifecycle {
+    create_before_destroy = true
   }
 }
