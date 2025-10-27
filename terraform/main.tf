@@ -81,17 +81,20 @@ module "vpc" {
 # EKS Cluster
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
-  version = "~> 19.15"
+  version = "~> 20.0"
 
   cluster_name    = var.cluster_name
   cluster_version = var.kubernetes_version
 
-  vpc_id                         = module.vpc.vpc_id
-  subnet_ids                     = module.vpc.private_subnets
+  vpc_id     = module.vpc.vpc_id
+  subnet_ids = module.vpc.private_subnets
+
   cluster_endpoint_public_access = true
 
-  # Enable IRSA (IAM Roles for Service Accounts)
   enable_irsa = true
+
+  # Cluster access configuration
+  enable_cluster_creator_admin_permissions = true
 
   # Cluster addons
   cluster_addons = {
@@ -120,6 +123,8 @@ module "eks" {
 
       disk_size = 50
 
+      iam_role_attach_cni_policy = true
+
       labels = {
         Environment = var.environment
       }
@@ -134,20 +139,26 @@ module "eks" {
     }
   }
 
-  # aws-auth configmap
-  manage_aws_auth_configmap = true
+  # Access entries for additional IAM principals
+  access_entries = {
+    eks_admin = {
+      principal_arn = aws_iam_role.eks_admin.arn
+      type          = "STANDARD"
 
-  aws_auth_roles = [
-    {
-      rolearn  = aws_iam_role.eks_admin.arn
-      username = "eks-admin"
-      groups   = ["system:masters"]
-    },
-  ]
+      policy_associations = {
+        admin = {
+          policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+          access_scope = {
+            type = "cluster"
+          }
+        }
+      }
+    }
+  }
 
-  depends_on = [
-    module.vpc
-  ]
+  tags = {
+    Environment = var.environment
+  }
 }
 
 # ECR Repositories for Spring Boot services
@@ -211,6 +222,10 @@ resource "aws_iam_role" "eks_admin" {
       }
     ]
   })
+
+  tags = {
+    Name = "${var.project_name}-eks-admin-role"
+  }
 }
 
 resource "aws_iam_role_policy" "eks_admin_policy" {
@@ -224,7 +239,8 @@ resource "aws_iam_role_policy" "eks_admin_policy" {
         Effect = "Allow"
         Action = [
           "eks:DescribeCluster",
-          "eks:ListClusters"
+          "eks:ListClusters",
+          "eks:AccessKubernetesApi"
         ]
         Resource = "*"
       }
@@ -244,6 +260,47 @@ resource "aws_db_subnet_group" "main" {
   }
 
   depends_on = [module.vpc]
+}
+
+# Security Group for RDS
+resource "aws_security_group" "rds" {
+  count = var.create_rds ? 1 : 0
+
+  name_prefix = "${var.project_name}-rds-"
+  vpc_id      = module.vpc.vpc_id
+  description = "Security group for RDS instance"
+
+  tags = {
+    Name = "${var.project_name} RDS Security Group"
+  }
+
+  depends_on = [module.vpc]
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_vpc_security_group_ingress_rule" "rds_postgres" {
+  count = var.create_rds ? 1 : 0
+
+  security_group_id = aws_security_group.rds[0].id
+  description       = "PostgreSQL access from VPC"
+
+  from_port   = 5432
+  to_port     = 5432
+  ip_protocol = "tcp"
+  cidr_ipv4   = var.vpc_cidr
+}
+
+resource "aws_vpc_security_group_egress_rule" "rds_all" {
+  count = var.create_rds ? 1 : 0
+
+  security_group_id = aws_security_group.rds[0].id
+  description       = "Allow all outbound traffic"
+
+  ip_protocol = "-1"
+  cidr_ipv4   = "0.0.0.0/0"
 }
 
 # RDS Instance
@@ -283,39 +340,4 @@ resource "aws_db_instance" "main" {
     aws_db_subnet_group.main,
     aws_security_group.rds
   ]
-}
-
-# Security Group for RDS
-resource "aws_security_group" "rds" {
-  count = var.create_rds ? 1 : 0
-
-  name_prefix = "${var.project_name}-rds-"
-  vpc_id      = module.vpc.vpc_id
-  description = "Security group for RDS instance"
-
-  ingress {
-    from_port   = 5432
-    to_port     = 5432
-    protocol    = "tcp"
-    cidr_blocks = [var.vpc_cidr]
-    description = "PostgreSQL access from VPC"
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow all outbound traffic"
-  }
-
-  tags = {
-    Name = "${var.project_name} RDS Security Group"
-  }
-
-  depends_on = [module.vpc]
-
-  lifecycle {
-    create_before_destroy = true
-  }
 }
